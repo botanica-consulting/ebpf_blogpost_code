@@ -1,0 +1,95 @@
+From 3881b06247dc03b791f728e658bd03eee1efb05d Mon Sep 17 00:00:00 2001
+From: Nadav Markus <nadav@botanica.consulting>
+Date: Wed, 21 Aug 2024 12:58:33 +0300
+Subject: [PATCH] Added capability to print number of machine instructions in
+ EBPF programs
+
+---
+ llvm/lib/Target/BPF/BPF.h                     |  1 +
+ .../BPF/BPFMachineInstructionCountPass.cpp    | 25 +++++++++++++++++++
+ llvm/lib/Target/BPF/BPFTargetMachine.cpp      |  7 ++++++
+ llvm/lib/Target/BPF/CMakeLists.txt            |  1 +
+ 4 files changed, 34 insertions(+)
+ create mode 100644 llvm/lib/Target/BPF/BPFMachineInstructionCountPass.cpp
+
+diff --git a/llvm/lib/Target/BPF/BPF.h b/llvm/lib/Target/BPF/BPF.h
+index b48c122f48b4..184eba22236a 100644
+--- a/llvm/lib/Target/BPF/BPF.h
++++ b/llvm/lib/Target/BPF/BPF.h
+@@ -30,6 +30,7 @@ FunctionPass *createBPFMIPeepholePass();
+ FunctionPass *createBPFMIPeepholeTruncElimPass();
+ FunctionPass *createBPFMIPreEmitPeepholePass();
+ FunctionPass *createBPFMIPreEmitCheckingPass();
++FunctionPass *createBPFMachineInstructionCountPass();
+ 
+ void initializeBPFAbstractMemberAccessLegacyPassPass(PassRegistry &);
+ void initializeBPFAdjustOptPass(PassRegistry&);
+diff --git a/llvm/lib/Target/BPF/BPFMachineInstructionCountPass.cpp b/llvm/lib/Target/BPF/BPFMachineInstructionCountPass.cpp
+new file mode 100644
+index 000000000000..b51185b3ff2d
+--- /dev/null
++++ b/llvm/lib/Target/BPF/BPFMachineInstructionCountPass.cpp
+@@ -0,0 +1,25 @@
++
++#include <llvm/CodeGen/MachineFunctionPass.h>
++#include <llvm/CodeGen/MachineFunction.h>
++
++namespace llvm {
++
++
++class BPFMachineInstructionCountPass: public MachineFunctionPass {
++public:
++    BPFMachineInstructionCountPass(): MachineFunctionPass(ID) {}
++    static char ID;
++    bool runOnMachineFunction(MachineFunction& MF) override {
++        dbgs() << "The machine function " << MF.getName() << " has " << MF.getInstructionCount() << " instructions.\n";
++        // We didn't change any analysis.
++        return false;
++    }
++};
++
++char BPFMachineInstructionCountPass::ID = 0;
++
++FunctionPass* createBPFMachineInstructionCountPass() {
++    return new BPFMachineInstructionCountPass();
++}
++
++}
+diff --git a/llvm/lib/Target/BPF/BPFTargetMachine.cpp b/llvm/lib/Target/BPF/BPFTargetMachine.cpp
+index 320acdbc769f..f516bffee19b 100644
+--- a/llvm/lib/Target/BPF/BPFTargetMachine.cpp
++++ b/llvm/lib/Target/BPF/BPFTargetMachine.cpp
+@@ -96,6 +96,7 @@ public:
+   bool addInstSelector() override;
+   void addMachineSSAOptimization() override;
+   void addPreEmitPass() override;
++  void addPreEmitPass2() override;
+ };
+ }
+ 
+@@ -160,4 +161,10 @@ void BPFPassConfig::addPreEmitPass() {
+   if (getOptLevel() != CodeGenOpt::None)
+     if (!DisableMIPeephole)
+       addPass(createBPFMIPreEmitPeepholePass());
++
++}
++
++void BPFPassConfig::addPreEmitPass2() {
++  addPass(createBPFMachineInstructionCountPass());
+ }
++
+diff --git a/llvm/lib/Target/BPF/CMakeLists.txt b/llvm/lib/Target/BPF/CMakeLists.txt
+index f3f8a82d6c85..49b88241341b 100644
+--- a/llvm/lib/Target/BPF/CMakeLists.txt
++++ b/llvm/lib/Target/BPF/CMakeLists.txt
+@@ -34,6 +34,7 @@ add_llvm_target(BPFCodeGen
+   BPFMIChecking.cpp
+   BPFMISimplifyPatchable.cpp
+   BTFDebug.cpp
++  BPFMachineInstructionCountPass.cpp
+ 
+   LINK_COMPONENTS
+   Analysis
+-- 
+2.40.1
+
